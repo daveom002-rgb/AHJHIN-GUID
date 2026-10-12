@@ -1,6 +1,6 @@
 name: Build Android APK
 
-on:
+'on':
   push:
     branches:
       - main
@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,90 +25,52 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Prepare Clean Flutter Project &amp; Merge Files
+      - name: Prepare Clean Flutter Project & Copy Source Files
         run: |
-          python3 -c '
-          import os, shutil, subprocess, re
-
           # 1. Dynamically locate project folder containing pubspec.yaml
-          src_dir = None
-          for root, dirs, files in os.walk("."):
-              if "pubspec.yaml" in files and "lib" in dirs and "temp_app" not in root:
-                  src_dir = root
-                  break
+          SRC_DIR=$(find . -name "pubspec.yaml" -not -path "*/temp_app/*" -exec dirname {} \; | head -n 1)
+          echo "Source directory found at: $SRC_DIR"
 
-          if not src_dir:
-              raise RuntimeError("Could not find pubspec.yaml and lib directory in repository.")
+          # 2. Generate clean Android Gradle project structure
+          flutter create temp_app --org com.maya --project-name app --platforms android
 
-          print(f"Source files found in: {src_dir}")
-
-          # 2. Generate clean Flutter Android project structure
-          [suspicious link removed](["flutter", "create", "temp_app", "--org", "com.maya", "--project-name", "app", "--platforms", "android"], check=True)
-
-          temp_app = "temp_app"
-
-          # 3. Copy custom pubspec.yaml and lib folder
-          shutil.copy(os.path.join(src_dir, "pubspec.yaml"), os.path.join(temp_app, "pubspec.yaml"))
-          shutil.copytree(os.path.join(src_dir, "lib"), os.path.join(temp_app, "lib"), dirs_exist_ok=True)
+          # 3. Copy custom pubspec.yaml and Dart lib files
+          cp "$SRC_DIR/pubspec.yaml" temp_app/pubspec.yaml
+          cp -r "$SRC_DIR/lib/"* temp_app/lib/
 
           # 4. Copy custom Xiaomi Kotlin background services
-          kotlin_dst = os.path.join(temp_app, "android", "app", "src", "main", "kotlin", "com", "maya", "app")
-          os.makedirs(kotlin_dst, exist_ok=True)
+          mkdir -p temp_app/android/app/src/main/kotlin/com/maya/app
+          cp -r "$SRC_DIR"/android/app/src/main/kotlin/com/maya/app/* temp_app/android/app/src/main/kotlin/com/maya/app/
+          cp "$SRC_DIR/android/app/src/main/AndroidManifest.xml" temp_app/android/app/src/main/AndroidManifest.xml
 
-          kotlin_src = os.path.join(src_dir, "android", "app", "src", "main", "kotlin")
-          if os.path.exists(kotlin_src):
-              for root, dirs, files in os.walk(kotlin_src):
-                  for file in files:
-                      if file.endswith(".kt"):
-                          shutil.copy(os.path.join(root, file), os.path.join(kotlin_dst, file))
+          # 5. Fix MayaXiaomiService NotificationManager type cast
+          sed -i 's/as Manager/as NotificationManager/g' temp_app/android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt
 
-          # 5. Copy custom AndroidManifest.xml
-          manifest_src = os.path.join(src_dir, "android", "app", "src", "main", "AndroidManifest.xml")
-          if os.path.exists(manifest_src):
-              shutil.copy(manifest_src, os.path.join(temp_app, "android", "app", "src", "main", "AndroidManifest.xml"))
+          # 6. Create required Android XML resources
+          mkdir -p temp_app/android/app/src/main/res/drawable
+          mkdir -p temp_app/android/app/src/main/res/layout
+          mkdir -p temp_app/android/app/src/main/res/raw
+          mkdir -p temp_app/android/app/src/main/res/values
 
-          # 6. Fix MayaXiaomiService NotificationManager type cast
-          service_file = os.path.join(kotlin_dst, "MayaXiaomiService.kt")
-          if os.path.exists(service_file):
-              with open(service_file, "r") as f:
-                  code = [suspicious link removed]()
-              code = code.replace("as Manager", "as NotificationManager")
-              with open(service_file, "w") as f:
-                  f.write(code)
+          cat << 'EOF' > temp_app/android/app/src/main/res/values/styles.xml
+          EOF
 
-          # 7. Create required Android resources
-          res_dir = os.path.join(temp_app, "android", "app", "src", "main", "res")
-          os.makedirs(os.path.join(res_dir, "drawable"), exist_ok=True)
-          os.makedirs(os.path.join(res_dir, "layout"), exist_ok=True)
-          os.makedirs(os.path.join(res_dir, "raw"), exist_ok=True)
-          os.makedirs(os.path.join(res_dir, "values"), exist_ok=True)
+          cat << 'EOF' > temp_app/android/app/src/main/res/drawable/ic_stat_maya.xml
+          EOF
 
-          with open(os.path.join(res_dir, "values", "styles.xml"), "w") as f:
-              f.write("""
-          """)
+          cat << 'EOF' > temp_app/android/app/src/main/res/layout/layout_maya_overlay.xml
+          EOF
 
-          with open(os.path.join(res_dir, "drawable", "ic_stat_maya.xml"), "w") as f:
-              f.write("""
-          """)
+          printf 'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00' > temp_app/android/app/src/main/res/raw/maya_chime_loud.wav
 
-          with open(os.path.join(res_dir, "layout", "layout_maya_overlay.xml"), "w") as f:
-              f.write("""
-          """)
+          # 7. Update Android compileSdk version to 34
+          if [ -f temp_app/android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 34/g' temp_app/android/app/build.gradle.kts
+          fi
 
-          with open(os.path.join(res_dir, "raw", "maya_chime_loud.wav"), "wb") as f:
-              f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
-
-          # 8. Set compileSdk = 34 in build.gradle
-          for file in ["build.gradle", "build.gradle.kts"]:
-              p = os.path.join(temp_app, "android", "app", file)
-              if os.path.exists(p):
-                  with open(p, "r") as f:
-                      c = [suspicious link removed]()
-                  c = re.sub(r"compileSdk\s*=?\s*.*", "compileSdk = 34", c)
-                  c = re.sub(r"compileSdkVersion\s*.*", "compileSdkVersion 34", c)
-                  with open(p, "w") as f:
-                      f.write(c)
-          '
+          if [ -f temp_app/android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 34/g' temp_app/android/app/build.gradle
+          fi
 
       - name: Install Dependencies
         run: |
@@ -124,4 +87,4 @@ jobs:
         with:
           name: maya-redmi-apk
           path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
-
+```
