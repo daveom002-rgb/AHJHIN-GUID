@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -24,74 +24,62 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Backup custom source files
+      - name: Generate Clean Project &amp; Merge Source Files
         run: |
-          mkdir -p /tmp/maya_backup
-          cp -r android/app/src/main/kotlin /tmp/maya_backup/ 2&gt;/dev/null || true
-          cp android/app/src/main/AndroidManifest.xml /tmp/maya_backup/ 2&gt;/dev/null || true
-          cp -r lib /tmp/maya_backup/ 2&gt;/dev/null || true
-          cp pubspec.yaml /tmp/maya_backup/ 2&gt;/dev/null || true
+          # 1. Generate clean Android structure with package [suspicious link removed]
+          flutter create temp_app --org com.maya --project-name app --platforms=android
 
-      - name: Generate Android Gradle structure
-        run: flutter create . --org com.maya --project-name maya_app --platforms=android --overwrite
+          # 2. Copy custom Dart files and pubspec
+          cp -r lib/* temp_app/lib/
+          cp pubspec.yaml temp_app/pubspec.yaml
 
-      - name: Restore custom source files
-        run: |
-          cp -r /tmp/maya_backup/kotlin/* android/app/src/main/kotlin/ 2&gt;/dev/null || true
-          cp /tmp/maya_backup/AndroidManifest.xml android/app/src/main/ 2&gt;/dev/null || true
-          cp -r /tmp/maya_backup/lib/* lib/ 2&gt;/dev/null || true
-          cp /tmp/maya_backup/pubspec.yaml ./ 2&gt;/dev/null || true
+          # 3. Copy custom Xiaomi Kotlin files and AndroidManifest
+          cp -r android/app/src/main/kotlin/com/maya/app/* temp_app/android/app/src/main/kotlin/com/maya/app/
+          cp android/app/src/main/AndroidManifest.xml temp_app/android/app/src/main/AndroidManifest.xml
 
-      - name: Fix Kotlin code &amp; namespace
-        run: |
-          sed -i 's/as Manager/as NotificationManager/g' android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt 2&gt;/dev/null || true
-          python3 -c '
-          import os, re
-          for root, dirs, files in os.walk("android"):
-              for file in files:
-                  if file in ["build.gradle", "build.gradle.kts"]:
-                      p = os.path.join(root, file)
-                      with open(p, "r") as f:
-                          c = [suspicious link removed]()
-                      c = re.sub(r"namespace\s*=?\s*[\"'].*?[\"']", "namespace = \"[suspicious link removed]\"", c)
-                      c = re.sub(r"applicationId\s*=?\s*[\"'].*?[\"']", "applicationId = \"[suspicious link removed]\"", c)
-                      c = re.sub(r"compileSdk\s*=?\s*.*", "compileSdk = 34", c)
-                      with open(p, "w") as f:
-                          f.write(c)
-          '
+          # 4. Create required Android resources
+          mkdir -p temp_app/android/app/src/main/res/drawable
+          mkdir -p temp_app/android/app/src/main/res/layout
+          mkdir -p temp_app/android/app/src/main/res/raw
+          mkdir -p temp_app/android/app/src/main/res/values
 
-      - name: Create required Android resources
-        run: |
-          mkdir -p android/app/src/main/res/drawable
-          mkdir -p android/app/src/main/res/layout
-          mkdir -p android/app/src/main/res/raw
-          mkdir -p android/app/src/main/res/values
-
-          cat &lt;&lt; 'EOF' &gt; android/app/src/main/res/values/styles.xml
+          cat &lt;&lt; 'EOF' &gt; temp_app/android/app/src/main/res/values/styles.xml
           
           
           EOF
 
-          cat &lt;&lt; 'EOF' &gt; android/app/src/main/res/drawable/ic_stat_maya.xml
+          cat &lt;&lt; 'EOF' &gt; temp_app/android/app/src/main/res/drawable/ic_stat_maya.xml
           
           
           EOF
 
-          cat &lt;&lt; 'EOF' &gt; android/app/src/main/res/layout/layout_maya_overlay.xml
+          cat &lt;&lt; 'EOF' &gt; temp_app/android/app/src/main/res/layout/layout_maya_overlay.xml
           
           
           EOF
 
-          touch android/app/src/main/res/raw/maya_chime_loud.wav
+          printf 'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00' &gt; temp_app/android/app/src/main/res/raw/maya_chime_loud.wav
 
-      - name: Install dependencies
-        run: flutter pub get
+          # 5. Set Android compileSdk version to 34
+          if [ -f temp_app/android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 34/g' temp_app/android/app/build.gradle.kts
+          fi
+          if [ -f temp_app/android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 34/g' temp_app/android/app/build.gradle
+          fi
 
-      - name: Build APK
-        run: flutter build apk --debug
+      - name: Install Dependencies
+        run: |
+          cd temp_app
+          flutter pub get
+
+      - name: Build Debug APK
+        run: |
+          cd temp_app
+          flutter build apk --debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: maya-redmi-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
