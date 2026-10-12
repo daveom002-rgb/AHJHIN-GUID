@@ -1,0 +1,5 @@
+---
+
+## 2. Production Docker Compose Stack (`docker-compose.yml`)
+
+The multi-container stack orchestrates the FastAPI application, PostgreSQL database, and Redis caching instance with dependency health checks.

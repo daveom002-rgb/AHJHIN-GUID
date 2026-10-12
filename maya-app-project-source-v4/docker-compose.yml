@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maya-backend-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - PORT=8000
+      - WORKERS=4
+      - DATABASE_URL=postgresql://maya_admin:SecureMayaPass2026@db:5432/maya_telemetry_db
+      - REDIS_URL=redis://redis:6379/0
+      - MAYA_API_SECRET=sk_live_maya_prod_998877665544332211
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - maya-network
+
+  db:
+    image: postgres:16-alpine
+    container_name: maya-postgres-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=maya_admin
+      - POSTGRES_PASSWORD=SecureMayaPass2026
+      - POSTGRES_DB=maya_telemetry_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maya_admin -d maya_telemetry_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - maya-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: maya-redis-cache
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - maya-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  maya-network:
+    driver: bridge
