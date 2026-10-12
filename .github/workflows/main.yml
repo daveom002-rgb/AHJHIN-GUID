@@ -9,9 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,7 +23,6 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.22.x'
 
       - name: Backup custom source files
         run: |
@@ -46,7 +42,25 @@ jobs:
           cp -r /tmp/maya_backup/lib/* lib/ 2&gt;/dev/null || true
           cp /tmp/maya_backup/pubspec.yaml ./ 2&gt;/dev/null || true
 
-      - name: Configure Android resources
+      - name: Fix Kotlin code &amp; namespace
+        run: |
+          sed -i 's/as Manager/as NotificationManager/g' android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt 2&gt;/dev/null || true
+          python3 -c '
+          import os, re
+          for root, dirs, files in os.walk("android"):
+              for file in files:
+                  if file in ["build.gradle", "build.gradle.kts"]:
+                      p = os.path.join(root, file)
+                      with open(p, "r") as f:
+                          c = [suspicious link removed]()
+                      c = re.sub(r"namespace\s*=?\s*[\"'].*?[\"']", "namespace = \"[suspicious link removed]\"", c)
+                      c = re.sub(r"applicationId\s*=?\s*[\"'].*?[\"']", "applicationId = \"[suspicious link removed]\"", c)
+                      c = re.sub(r"compileSdk\s*=?\s*.*", "compileSdk = 34", c)
+                      with open(p, "w") as f:
+                          f.write(c)
+          '
+
+      - name: Create required Android resources
         run: |
           mkdir -p android/app/src/main/res/drawable
           mkdir -p android/app/src/main/res/layout
@@ -70,21 +84,6 @@ jobs:
 
           touch android/app/src/main/res/raw/maya_chime_loud.wav
 
-      - name: Configure Android Package Namespace
-        run: |
-          sed -i 's/as Manager/as NotificationManager/g' android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt 2&gt;/dev/null || true
-          
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/namespace = ".*"/namespace = "[suspicious link removed]"/g' android/app/build.gradle.kts
-            sed -i 's/applicationId = ".*"/applicationId = "[suspicious link removed]"/g' android/app/build.gradle.kts
-            sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
-          fi
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/namespace .*/namespace "[suspicious link removed]"/g' android/app/build.gradle
-            sed -i 's/applicationId .*/applicationId "[suspicious link removed]"/g' android/app/build.gradle
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 34/g' android/app/build.gradle
-          fi
-
       - name: Install dependencies
         run: flutter pub get
 
@@ -96,4 +95,3 @@ jobs:
         with:
           name: maya-redmi-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
-          
