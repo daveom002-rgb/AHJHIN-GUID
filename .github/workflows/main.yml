@@ -87,4 +87,3 @@ jobs:
         with:
           name: maya-redmi-apk
           path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
-```
