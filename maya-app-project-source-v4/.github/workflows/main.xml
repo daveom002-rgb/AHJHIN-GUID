@@ -1,0 +1,104 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Prepare Clean Flutter Project & Copy Source Files
+        run: |
+          # 1. Dynamically locate project folder containing pubspec.yaml
+          SRC_DIR=$(find . -name "pubspec.yaml" -not -path "*/temp_app/*" -exec dirname {} \; | head -n 1)
+          echo "Source directory found at: $SRC_DIR"
+
+          # 2. Generate clean Android Gradle project structure
+          flutter create temp_app --org com.maya --project-name app --platforms android
+
+          # 3. Copy custom pubspec.yaml and Dart lib files from v4 source
+          cp "$SRC_DIR/pubspec.yaml" temp_app/pubspec.yaml
+          cp -r "$SRC_DIR/lib/"* temp_app/lib/
+
+          # 4. Copy custom Xiaomi Kotlin background services from v4 source
+          mkdir -p temp_app/android/app/src/main/kotlin/com/maya/app
+          cp -r "$SRC_DIR"/android/app/src/main/kotlin/com/maya/app/* temp_app/android/app/src/main/kotlin/com/maya/app/
+          cp "$SRC_DIR/android/app/src/main/AndroidManifest.xml" temp_app/android/app/src/main/AndroidManifest.xml
+
+          # 5. Fix MayaXiaomiService NotificationManager type cast
+          sed -i 's/as Manager/as NotificationManager/g' temp_app/android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt
+
+          # 6. Create required Android XML resources
+          mkdir -p temp_app/android/app/src/main/res/drawable
+          mkdir -p temp_app/android/app/src/main/res/layout
+          mkdir -p temp_app/android/app/src/main/res/raw
+          mkdir -p temp_app/android/app/src/main/res/values
+
+          cat << 'EOF' > temp_app/android/app/src/main/res/values/styles.xml
+          EOF
+
+          cat << 'EOF' > temp_app/android/app/src/main/res/drawable/ic_stat_maya.xml
+          EOF
+
+          cat << 'EOF' > temp_app/android/app/src/main/res/layout/layout_maya_overlay.xml
+          EOF
+
+          printf 'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00' > temp_app/android/app/src/main/res/raw/maya_chime_loud.wav
+
+          # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24 (Fixes AGP 9 DSL error)
+          if [ -f temp_app/android/settings.gradle.kts ]; then
+            sed -i -E 's/id\\("com\.android\.application"\\) version "[^"]+"/id("[suspicious link removed].application") version "8.3.2"/g' temp_app/android/settings.gradle.kts
+            sed -i -E 's/id\\("org\.jetbrains\.kotlin\.android"\\) version "[^"]+"/id("[suspicious link removed]") version "1.9.24"/g' temp_app/android/settings.gradle.kts
+          fi
+
+          if [ -f temp_app/android/settings.gradle ]; then
+            sed -i -E "s/id\\('com\.android\.application'\\) version '[^']+'/id('[suspicious link removed].application') version '8.3.2'/g" temp_app/android/settings.gradle
+            sed -i -E "s/id\\('org\.jetbrains\.kotlin\.android'\\) version '[^']+'/id('[suspicious link removed]') version '1.9.24'/g" temp_app/android/settings.gradle
+          fi
+
+          # 8. Set compileSdk = 36 (Fixes shared_preferences_android & jni SDK warnings)
+          if [ -f temp_app/android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 36/g' temp_app/android/app/build.gradle.kts
+          fi
+
+          if [ -f temp_app/android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' temp_app/android/app/build.gradle
+          fi
+
+      - name: Install Dependencies & Patch Pub Cache
+        run: |
+          cd temp_app
+          flutter pub get
+
+          # Fix deprecated/removed jcenter() calls in pub dependencies like speech_to_text
+          find ~/.pub-cache -name "build.gradle*" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
+
+      - name: Build Debug APK
+        run: |
+          cd temp_app
+          flutter build apk --debug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maya-redmi-apk
+          path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
