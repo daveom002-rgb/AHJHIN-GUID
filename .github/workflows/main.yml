@@ -1,6 +1,6 @@
 name: Build Android APK
 
-'on':
+on:
   push:
     branches:
       - main
@@ -67,7 +67,7 @@ jobs:
               f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
           '
 
-          # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24 (Fixes AGP 9 DSL error)
+          # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24
           if [ -f temp_app/android/settings.gradle.kts ]; then
             sed -i -E 's/id\\("com\.android\.application"\\) version "[^"]+"/id("[suspicious link removed].application") version "8.3.2"/g' temp_app/android/settings.gradle.kts
             sed -i -E 's/id\\("org\.jetbrains\.kotlin\.android"\\) version "[^"]+"/id("[suspicious link removed]") version "1.9.24"/g' temp_app/android/settings.gradle.kts
@@ -78,7 +78,7 @@ jobs:
             sed -i -E "s/id\\('org\.jetbrains\.kotlin\.android'\\) version '[^']+'/id('[suspicious link removed]') version '1.9.24'/g" temp_app/android/settings.gradle
           fi
 
-          # 8. Set compileSdk = 36 (Fixes shared_preferences_android & jni SDK warnings)
+          # 8. Set compileSdk = 36
           if [ -f temp_app/android/app/build.gradle.kts ]; then
             sed -i 's/compileSdk = .*/compileSdk = 36/g' temp_app/android/app/build.gradle.kts
           fi
@@ -91,7 +91,6 @@ jobs:
         run: |
           cd temp_app
           flutter pub get
-          # Fix deprecated/removed jcenter() calls in pub dependencies like speech_to_text
           find ~/.pub-cache -name "build.gradle*" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
 
       - name: Build Debug APK
