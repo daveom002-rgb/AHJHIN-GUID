@@ -46,22 +46,26 @@ jobs:
           # 5. Fix MayaXiaomiService NotificationManager type cast
           sed -i 's/as Manager/as NotificationManager/g' temp_app/android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt
 
-          # 6. Create required Android XML resources
-          mkdir -p temp_app/android/app/src/main/res/drawable
-          mkdir -p temp_app/android/app/src/main/res/layout
-          mkdir -p temp_app/android/app/src/main/res/raw
-          mkdir -p temp_app/android/app/src/main/res/values
-
-          cat << 'EOF' > temp_app/android/app/src/main/res/values/styles.xml
-          EOF
-
-          cat << 'EOF' > temp_app/android/app/src/main/res/drawable/ic_stat_maya.xml
-          EOF
-
-          cat << 'EOF' > temp_app/android/app/src/main/res/layout/layout_maya_overlay.xml
-          EOF
-
-          printf 'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00' > temp_app/android/app/src/main/res/raw/maya_chime_loud.wav
+          # 6. Create required Android XML resources safely with Python (Prevents EOF syntax errors)
+          python3 -c '
+          import os
+          res_dir = "temp_app/android/app/src/main/res"
+          os.makedirs(os.path.join(res_dir, "drawable"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "layout"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "raw"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "values"), exist_ok=True)
+          styles_xml = """ """
+          ic_stat_xml = """ """
+          layout_xml = """ """
+          with open(os.path.join(res_dir, "values", "styles.xml"), "w") as f:
+              f.write(styles_xml)
+          with open(os.path.join(res_dir, "drawable", "ic_stat_maya.xml"), "w") as f:
+              f.write(ic_stat_xml)
+          with open(os.path.join(res_dir, "layout", "layout_maya_overlay.xml"), "w") as f:
+              f.write(layout_xml)
+          with open(os.path.join(res_dir, "raw", "maya_chime_loud.wav"), "wb") as f:
+              f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+          '
 
           # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24 (Fixes AGP 9 DSL error)
           if [ -f temp_app/android/settings.gradle.kts ]; then
@@ -87,7 +91,6 @@ jobs:
         run: |
           cd temp_app
           flutter pub get
-
           # Fix deprecated/removed jcenter() calls in pub dependencies like speech_to_text
           find ~/.pub-cache -name "build.gradle*" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
 
