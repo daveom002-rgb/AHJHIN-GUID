@@ -9,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,7 +25,7 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Prepare Clean Flutter Project & Copy Source Files
+      - name: Prepare Clean Flutter Project &amp; Copy Source Files
         run: |
           # 1. Dynamically locate project folder containing pubspec.yaml
           SRC_DIR=$(find . -name "pubspec.yaml" -not -path "*/temp_app/*" -exec dirname {} \; | head -n 1)
@@ -47,49 +46,60 @@ jobs:
           # 5. Fix MayaXiaomiService NotificationManager type cast
           sed -i 's/as Manager/as NotificationManager/g' temp_app/android/app/src/main/kotlin/com/maya/app/MayaXiaomiService.kt
 
-          # 6. Create required Android XML resources
-          mkdir -p temp_app/android/app/src/main/res/drawable
-          mkdir -p temp_app/android/app/src/main/res/layout
-          mkdir -p temp_app/android/app/src/main/res/raw
-          mkdir -p temp_app/android/app/src/main/res/values
+          # 6. Create required Android XML resources safely with Python (Prevents EOF syntax errors)
+          python3 -c '
+          import os
 
-          cat << 'EOF' > temp_app/android/app/src/main/res/values/styles.xml
-          EOF
+          res_dir = "temp_app/android/app/src/main/res"
+          os.makedirs(os.path.join(res_dir, "drawable"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "layout"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "raw"), exist_ok=True)
+          os.makedirs(os.path.join(res_dir, "values"), exist_ok=True)
 
-          cat << 'EOF' > temp_app/android/app/src/main/res/drawable/ic_stat_maya.xml
-          EOF
+          styles_xml = """
+          """
 
-          cat << 'EOF' > temp_app/android/app/src/main/res/layout/layout_maya_overlay.xml
-          EOF
+          ic_stat_xml = """
+          """
 
-          printf 'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00' > temp_app/android/app/src/main/res/raw/maya_chime_loud.wav
+          layout_xml = """
+          """
 
-          # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24 (Fixes AGP 9 DSL error)
+          with open(os.path.join(res_dir, "values", "styles.xml"), "w") as f:
+              f.write(styles_xml)
+
+          with open(os.path.join(res_dir, "drawable", "ic_stat_maya.xml"), "w") as f:
+              f.write(ic_stat_xml)
+
+          with open(os.path.join(res_dir, "layout", "layout_maya_overlay.xml"), "w") as f:
+              f.write(layout_xml)
+
+          with open(os.path.join(res_dir, "raw", "maya_chime_loud.wav"), "wb") as f:
+              f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+          '
+
+          # 7. Lock AGP version to 8.3.2 and Kotlin plugin to 1.9.24
           if [ -f temp_app/android/settings.gradle.kts ]; then
             sed -i -E 's/id\\("com\.android\.application"\\) version "[^"]+"/id("[suspicious link removed].application") version "8.3.2"/g' temp_app/android/settings.gradle.kts
             sed -i -E 's/id\\("org\.jetbrains\.kotlin\.android"\\) version "[^"]+"/id("[suspicious link removed]") version "1.9.24"/g' temp_app/android/settings.gradle.kts
           fi
-
           if [ -f temp_app/android/settings.gradle ]; then
             sed -i -E "s/id\\('com\.android\.application'\\) version '[^']+'/id('[suspicious link removed].application') version '8.3.2'/g" temp_app/android/settings.gradle
             sed -i -E "s/id\\('org\.jetbrains\.kotlin\.android'\\) version '[^']+'/id('[suspicious link removed]') version '1.9.24'/g" temp_app/android/settings.gradle
           fi
 
-          # 8. Set compileSdk = 36 (Fixes shared_preferences_android & jni SDK warnings)
+          # 8. Set compileSdk = 36
           if [ -f temp_app/android/app/build.gradle.kts ]; then
             sed -i 's/compileSdk = .*/compileSdk = 36/g' temp_app/android/app/build.gradle.kts
           fi
-
           if [ -f temp_app/android/app/build.gradle ]; then
             sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' temp_app/android/app/build.gradle
           fi
 
-      - name: Install Dependencies & Patch Pub Cache
+      - name: Install Dependencies &amp; Patch Pub Cache
         run: |
           cd temp_app
           flutter pub get
-
-          # Fix deprecated/removed jcenter() calls in pub dependencies like speech_to_text
           find ~/.pub-cache -name "build.gradle*" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
 
       - name: Build Debug APK
@@ -102,3 +112,5 @@ jobs:
         with:
           name: maya-redmi-apk
           path: temp_app/build/app/outputs/flutter-apk/app-debug.apk
+
+---
